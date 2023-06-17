@@ -35,7 +35,6 @@ class SymptomsData {
     )
 }
 
-
 //This is the data class for the symptoms
 data class SelectedSymptomsRequest(val symptoms: List<String>)
 //This is the data class for the response from Modal
@@ -45,6 +44,8 @@ data class DiseasePredictionResponse(val disease: String)
 @Composable
 fun MainScreen(apiService: APIservice) {
     val symptomsData = SymptomsData()
+
+
     val selectedSymptoms = remember { mutableStateListOf<String>() }
     val coroutineScope = rememberCoroutineScope()
     val prediction = remember { mutableStateOf("") }
@@ -61,6 +62,7 @@ fun MainScreen(apiService: APIservice) {
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         sendSelectedSymptoms(apiService, selectedSymptoms)
+
                     } catch (e: Exception) {
                         val errorMessage = "Error: in the API call"
                         Log.e("Api_error", errorMessage)

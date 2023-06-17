@@ -17,7 +17,8 @@ val apiService: APIservice = retrofit.create(APIservice::class.java)
 suspend fun sendSelectedSymptoms(apiService: APIservice, selectedSymptoms: List<String>): DiseasePredictionResponse? {
     try {
         val request = SelectedSymptomsRequest(selectedSymptoms)
-        return apiService.sendSelectedSymptoms(request)
+        return  apiService.sendSelectedSymptoms(request)
+
     }catch (e: Exception){
         e.stackTrace
         return null

@@ -6,5 +6,5 @@ import retrofit2.http.POST
 
 interface APIservice {
     @POST("/predict")
-    suspend fun sendSelectedSymptoms(@Body request: SelectedSymptomsRequest): DiseasePredictionResponse
+    suspend fun sendSelectedSymptoms(@Body request: SelectedSymptomsRequest): DiseasePredictionResponse?
 }

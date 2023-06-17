@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Modifier
 import com.example.searchdisease.ui.MainScreen
-import com.example.searchdisease.ui.Main_Screen
+
 
 import com.example.searchdisease.ui.theme.SearchdiseaseTheme
 
