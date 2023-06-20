@@ -20,7 +20,7 @@ class MainActivity : ComponentActivity() {
             SearchdiseaseTheme {
                 // A surface container using the 'background' color from the theme
                 Box(Modifier.fillMaxSize()) {
-                    MainScreen(apiService = apiService)
+                    MainScreen()
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.example.searchdisease.ui
 
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,10 +23,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.searchdisease.APIservice
-import com.example.searchdisease.apiService
-import com.example.searchdisease.sendSelectedSymptoms
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.await
+import retrofit2.converter.gson.GsonConverterFactory
 
 //Here I have implemented the Api call and the UI for the symptom selection screen
 
@@ -42,56 +49,40 @@ data class DiseasePredictionResponse(val disease: String)
 
 
 @Composable
-fun MainScreen(apiService: APIservice) {
+fun MainScreen() {
     val symptomsData = SymptomsData()
-
-
     val selectedSymptoms = remember { mutableStateListOf<String>() }
     val coroutineScope = rememberCoroutineScope()
     val prediction = remember { mutableStateOf("") }
-    val showdialog = remember { mutableStateOf(false) }
+    val isButtonClicked = remember { mutableStateOf(false) }
 
 
     Box{
         SymptomSelectionScreen(symptomsData, selectedSymptoms) { symptom ->
             selectedSymptoms.add(symptom)
         }
-
+        for (symptom in selectedSymptoms) {
+            println(symptom)
+        }
         Button(
-            onClick = {
-                coroutineScope.launch(Dispatchers.IO) {
-                    try {
-                        sendSelectedSymptoms(apiService, selectedSymptoms)
-
-                    } catch (e: Exception) {
-                        val errorMessage = "Error: in the API call"
-                        Log.e("Api_error", errorMessage)
+            onClick = {//Here I have implemented the Api call and the UI for the symptom selection screen
+                //Here the crash occurs
+                println("Button Clicked")
+                coroutineScope.launch {
+                    try{
+                        val result = withContext(Dispatchers.IO) {
+                            postDataUsingRetrofit(selectedSymptoms, prediction)
+                        }
+                        prediction.value = result.toString()
+                    }catch (e: Exception){
+                        Log.e("MainScreen", "Exception: ${e.message}")
                     }
                 }
+
             },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-        Text("Send to API")
-        }
-
-        //This is the dialog box which will show the predicted disease
-        if (showdialog.value) {
-            AlertDialog(
-                onDismissRequest = {
-                    showdialog.value = false
-                },
-                title = { Text("Predicted Disease") },
-                text = { Text(prediction.value) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showdialog.value = false
-                        }
-                    ) {
-                        Text("OK")
-                    }
-                }
-            )
+            Text("Predict")
         }
     }
 }
@@ -162,8 +153,76 @@ fun SymptomItem(
 
 
 
+
+private suspend fun postDataUsingRetrofit(
+    selectedSymptoms: SnapshotStateList<String>,
+    result: MutableState<String>
+) {
+    val url = "https://disease.swoyam.engineer"
+    // on below line we are creating a retrofit
+    // builder and passing our base url
+    val retrofit = Retrofit.Builder()
+        .baseUrl(url)
+        // as we are sending data in json format so
+        // we have to add Gson converter factory
+        .addConverterFactory(GsonConverterFactory.create())
+        // at last we are building our retrofit builder.
+        .build()
+    // below the line is to create an instance for our retrofit api class.
+    val retrofitAPI = retrofit.create(APIservice::class.java)
+    // passing data from our text fields to our model class.
+    val dataModel = SelectedSymptomsRequest(selectedSymptoms)
+    // calling a method to create an update and passing our model class.
+    val call: Call<DiseasePredictionResponse>? = retrofitAPI.sendSelectedSymptoms(dataModel)
+    // on below line we are executing our method.
+    try {
+        val response = call?.execute()
+        if (response?.isSuccessful == true) {
+            println("Response: successful")
+            val predictionResponse: DiseasePredictionResponse? = response.body()
+            val disease = predictionResponse?.disease ?: "Unknown"
+            val resp = "Predicted Disease: $disease"
+            result.value = resp
+            println("Response: here  is  $resp")
+            println(result.value)
+        } else {
+            result.value = "Error found: ${response?.errorBody()}"
+        }
+    } catch (e: Exception) {
+        result.value = "Error found: in postdatausingretrofit"
+        Log.e("YourTag", "Exception occurred: ${e.message}", e)
+    }
+}
+
+/*
+private suspend fun postDataUsingRetrofit(
+    selectedSymptoms: List<String>,
+    prediction: MutableState<String>
+) {
+    val url = "https://disease.swoyam.engineer"
+    val retrofit = Retrofit.Builder()
+        .baseUrl(url)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+    val retrofitAPI = retrofit.create(APIservice::class.java)
+
+    val dataModel = SelectedSymptomsRequest(selectedSymptoms)
+    val response = retrofitAPI.sendSelectedSymptoms(dataModel)
+    if (response.isSuccessful) {
+        val predictionResponse: DiseasePredictionResponse? = response.body()
+        if (predictionResponse != null) {
+            prediction.value = predictionResponse.disease
+        } else {
+            prediction.value = "Unknown"
+        }
+    } else {
+        throw Exception("Failed to make a prediction: ${response.message()}")
+    }
+}*/
+
+
 @Preview
 @Composable
 fun PreviewMainScreen() {
-    MainScreen(apiService = apiService)
+    MainScreen()
 }
