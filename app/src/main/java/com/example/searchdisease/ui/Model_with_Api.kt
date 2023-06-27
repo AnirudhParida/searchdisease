@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,19 +21,28 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.searchdisease.APIservice
+import com.google.gson.GsonBuilder
+import com.google.gson.InstanceCreator
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.logging.HttpLoggingInterceptor
+import okio.Timeout
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.await
 import retrofit2.converter.gson.GsonConverterFactory
+import java.lang.reflect.Type
 
 //Here I have implemented the Api call and the UI for the symptom selection screen
 
@@ -43,7 +53,10 @@ class SymptomsData {
 }
 
 //This is the data class for the symptoms
-data class SelectedSymptomsRequest(val symptoms: List<String>)
+data class SelectedSymptomsRequest(
+    @SerializedName("symptoms")
+    val symptoms: List<String>
+)
 //This is the data class for the response from Modal
 data class DiseasePredictionResponse(val disease: String)
 
@@ -55,7 +68,7 @@ fun MainScreen() {
     val coroutineScope = rememberCoroutineScope()
     val prediction = remember { mutableStateOf("") }
     val isButtonClicked = remember { mutableStateOf(false) }
-
+    val predictedDisease = remember { mutableStateOf<String?>(null) }
 
     Box{
         SymptomSelectionScreen(symptomsData, selectedSymptoms) { symptom ->
@@ -69,22 +82,31 @@ fun MainScreen() {
                 //Here the crash occurs
                 println("Button Clicked")
                 coroutineScope.launch {
-                    try{
-                        val result = withContext(Dispatchers.IO) {
-                            postDataUsingRetrofit(selectedSymptoms, prediction)
-                        }
-                        prediction.value = result.toString()
-                    }catch (e: Exception){
-                        Log.e("MainScreen", "Exception: ${e.message}")
-                    }
+                    isButtonClicked.value = true
+
+                    val result = postDataUsingRetrofit(selectedSymptoms, prediction)
+                    predictedDisease.value = result
+
+                    Log.e("Predict", "Result: ${predictedDisease.value}")
+
                 }
 
             },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Text("Predict")
+            if (isButtonClicked.value) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(start = 4.dp),
+                    color = Color.White
+                )
+                Text(text = prediction.value, modifier = Modifier.fillMaxWidth())
+            }
         }
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,73 +175,94 @@ fun SymptomItem(
 
 
 
+class CallTypeInstanceCreator<T> : InstanceCreator<Call<T>> {
+    override fun createInstance(type: Type?): Call<T> {
+        return object : Call<T> {
+            override fun enqueue(callback: Callback<T>) {}
+            override fun isExecuted(): Boolean = false
+            override fun clone(): Call<T> = this
+            override fun isCanceled(): Boolean = false
+            override fun cancel() {}
+            override fun execute(): Response<T> = throw UnsupportedOperationException("Call execute() not supported")
+            override fun request(): Request = throw UnsupportedOperationException("Call request() not supported")
+            override fun timeout(): Timeout {
+                TODO("Not yet implemented")
+            }
+        }
+    }
+}
+
+private fun createApiService(): APIservice {
+
+    val BASE_URL = "https://disease.swoyam.engineer"
+    val loggingInterceptor = HttpLoggingInterceptor { message ->
+        Log.d("ApiService", message)
+    }.apply {
+        level = HttpLoggingInterceptor.Level.BODY
+    }
+
+    val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(loggingInterceptor)
+        // Add any other interceptors or configurations as needed
+        .build()
+
+    val gson = GsonBuilder()
+        .registerTypeAdapter(Call::class.java, CallTypeInstanceCreator<Any>())
+        .create()
+
+    return Retrofit.Builder()
+        .baseUrl(BASE_URL)
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create(gson))
+        .build()
+        .create(APIservice::class.java)
+}
+
 
 private suspend fun postDataUsingRetrofit(
     selectedSymptoms: SnapshotStateList<String>,
     result: MutableState<String>
-) {
-    val url = "https://disease.swoyam.engineer"
-    // on below line we are creating a retrofit
-    // builder and passing our base url
-    val retrofit = Retrofit.Builder()
-        .baseUrl(url)
-        // as we are sending data in json format so
-        // we have to add Gson converter factory
-        .addConverterFactory(GsonConverterFactory.create())
-        // at last we are building our retrofit builder.
-        .build()
+):String {
     // below the line is to create an instance for our retrofit api class.
-    val retrofitAPI = retrofit.create(APIservice::class.java)
+    val retrofitAPI = createApiService()
     // passing data from our text fields to our model class.
     val dataModel = SelectedSymptomsRequest(selectedSymptoms)
     // calling a method to create an update and passing our model class.
     val call: Call<DiseasePredictionResponse>? = retrofitAPI.sendSelectedSymptoms(dataModel)
     // on below line we are executing our method.
     try {
-        val response = call?.execute()
-        if (response?.isSuccessful == true) {
-            println("Response: successful")
-            val predictionResponse: DiseasePredictionResponse? = response.body()
-            val disease = predictionResponse?.disease ?: "Unknown"
-            val resp = "Predicted Disease: $disease"
-            result.value = resp
-            println("Response: here  is  $resp")
-            println(result.value)
-        } else {
-            result.value = "Error found: ${response?.errorBody()}"
-        }
+        val response = call?.enqueue(object : Callback<DiseasePredictionResponse> {
+            override fun onResponse(
+                call: Call<DiseasePredictionResponse>,
+                response: Response<DiseasePredictionResponse>
+            ) {
+                if (response.isSuccessful) {
+                    println("Response: successful")
+                    val predictionResponse: DiseasePredictionResponse? = response.body()
+                    val disease = predictionResponse?.disease ?: "Unknown"
+                    val resp = "Predicted Disease: $disease"
+                    Log.e("resp", "Response: $resp")
+                    result.value = resp
+                    Log.i("resp","Response: here  is  $resp")
+                    Log.i("Disease", "Response: ${result.value}")
+                    println(result.value)
+                } else {
+                    result.value = "Error found: ${response.errorBody()}"
+                    println("Response: ${response.errorBody()}")
+                }
+            }
+
+            override fun onFailure(call: Call<DiseasePredictionResponse>, t: Throwable) {
+                println("Response: ${t.message}")
+                result.value = "Error found: ${t.message}"
+            }
+        })
     } catch (e: Exception) {
         result.value = "Error found: in postdatausingretrofit"
         Log.e("YourTag", "Exception occurred: ${e.message}", e)
     }
+    return result.value
 }
-
-/*
-private suspend fun postDataUsingRetrofit(
-    selectedSymptoms: List<String>,
-    prediction: MutableState<String>
-) {
-    val url = "https://disease.swoyam.engineer"
-    val retrofit = Retrofit.Builder()
-        .baseUrl(url)
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-    val retrofitAPI = retrofit.create(APIservice::class.java)
-
-    val dataModel = SelectedSymptomsRequest(selectedSymptoms)
-    val response = retrofitAPI.sendSelectedSymptoms(dataModel)
-    if (response.isSuccessful) {
-        val predictionResponse: DiseasePredictionResponse? = response.body()
-        if (predictionResponse != null) {
-            prediction.value = predictionResponse.disease
-        } else {
-            prediction.value = "Unknown"
-        }
-    } else {
-        throw Exception("Failed to make a prediction: ${response.message()}")
-    }
-}*/
-
 
 @Preview
 @Composable
