@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.searchdisease.APIservice
+import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.InstanceCreator
 import com.google.gson.annotations.SerializedName
@@ -43,6 +44,7 @@ import retrofit2.Retrofit
 import retrofit2.await
 import retrofit2.converter.gson.GsonConverterFactory
 import java.lang.reflect.Type
+
 
 //Here I have implemented the Api call and the UI for the symptom selection screen
 
@@ -70,6 +72,7 @@ fun MainScreen() {
     val isButtonClicked = remember { mutableStateOf(false) }
     val predictedDisease = remember { mutableStateOf<String?>(null) }
 
+
     Box{
         SymptomSelectionScreen(symptomsData, selectedSymptoms) { symptom ->
             selectedSymptoms.add(symptom)
@@ -85,9 +88,13 @@ fun MainScreen() {
                     isButtonClicked.value = true
 
                     val result = postDataUsingRetrofit(selectedSymptoms, prediction)
-                    predictedDisease.value = result
-
-                    Log.e("Predict", "Result: ${predictedDisease.value}")
+                    if(result != null){
+                        prediction.value = result
+                    }
+                    else{
+                        prediction.value = "Error"
+                    }
+                    Log.d("Predict", "Result: ${prediction.value}")
 
                 }
 
@@ -102,7 +109,7 @@ fun MainScreen() {
                         .padding(start = 4.dp),
                     color = Color.White
                 )
-                Text(text = prediction.value, modifier = Modifier.fillMaxWidth())
+                predictedDisease.value?.let { Text(text = it, modifier = Modifier.fillMaxWidth()) }
             }
         }
     }
@@ -237,16 +244,10 @@ private suspend fun postDataUsingRetrofit(
                 response: Response<DiseasePredictionResponse>
             ) {
                 if (response.isSuccessful) {
-                    println("Response: successful")
-                    val predictionResponse: DiseasePredictionResponse? = response.body()
-                    val disease = predictionResponse?.disease ?: "Unknown"
-                    val resp = "Predicted Disease: $disease"
-                    Log.e("resp", "Response: $resp")
-                    result.value = resp
-                    Log.i("resp","Response: here  is  $resp")
-                    Log.i("Disease", "Response: ${result.value}")
-                    println(result.value)
-                } else {
+                    result.value  = response.body()?.disease ?: "No disease found"
+                    Log.d("trial","Response: ${response.body()?.disease}")
+                    Log.d("Response", "Response: ${response.body()?.disease}")
+                } else{
                     result.value = "Error found: ${response.errorBody()}"
                     println("Response: ${response.errorBody()}")
                 }
